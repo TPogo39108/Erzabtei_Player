@@ -36,8 +36,8 @@
         const IconPause = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>);
         const IconMusic = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>);
         const IconRefresh = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>);
-        // External Link Icon (Pfeil nach oben rechts)
-        const IconExternal = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>);
+        // NEU: Download Icon (Pfeil nach unten)
+        const IconDownload = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>);
 
         // --- KONFIGURATION ---
         const DIRECTORY_FILENAME = 'directory.html';
@@ -62,20 +62,17 @@
             if (!filename) return null;
             const decoded = decodeURIComponent(filename);
             
-            // URL CLEANUP: Falls der Link schon absolut ist, nicht nochmal die Base URL davorhängen
+            // URL CLEANUP
             let fullUrl = '';
             if (decoded.startsWith('http')) {
                 fullUrl = decoded;
             } else {
-                // Sicherstellen, dass kein doppelter Slash entsteht, aber einer da ist
                 const cleanBase = AUDIO_BASE_URL.endsWith('/') ? AUDIO_BASE_URL : AUDIO_BASE_URL + '/';
                 const cleanFile = decoded.startsWith('/') ? decoded.slice(1) : decoded;
                 fullUrl = cleanBase + cleanFile;
             }
 
-            // 1. Versuch: Strenger Parser
             const regex = /^(\d{4})-(\d{2})-(\d{2})-([A-Za-z]+)-(\d{4})-(.*)\.mp3$/;
-            // Wir schauen nur auf den Dateinamen-Teil (nach dem letzten /)
             const filePart = decoded.split('/').pop(); 
             const match = filePart.match(regex);
             
@@ -106,7 +103,6 @@
                 };
             }
 
-            // 2. Versuch: Fallback für alles andere
             if (decoded.toLowerCase().endsWith('.mp3')) {
                 return {
                     id: decoded,
@@ -155,14 +151,12 @@
                 if (audioRef.current) {
                     audioRef.current.src = file.url;
                     audioRef.current.playbackRate = playbackRate;
-                    // "Metadata" lädt nur die Infos, nicht die ganze Datei sofort -> Spart Daten/Fehler
                     audioRef.current.preload = "metadata"; 
                     
                     audioRef.current.play()
                         .then(() => setIsPlaying(true))
                         .catch(err => {
                             console.error("Playback start error:", err);
-                            // Autoplay Blockaden sind normal, andere Fehler zeigen wir an
                             if (err.name !== 'NotAllowedError') {
                                 setLoadError("Starten fehlgeschlagen.");
                             }
@@ -207,7 +201,6 @@
                         }}
                     />
                     
-                    {/* Fehlermeldung mit Direkt-Link */}
                     {loadError && (
                         <div className="absolute -top-16 left-2 right-2 bg-red-900/95 text-red-100 text-xs p-3 rounded-lg text-center border border-red-700 shadow-xl backdrop-blur-sm">
                             ⚠️ {loadError} <br/>
@@ -261,7 +254,6 @@
                 
                 try {
                     const timestamp = new Date().getTime();
-                    // Expliziter Pfad "./" und timestamp zum Cache-Busting
                     const fetchUrl = `./${DIRECTORY_FILENAME}?t=${timestamp}`;
 
                     const res = await fetch(fetchUrl, { cache: "no-store" }).catch(e => {
@@ -355,16 +347,17 @@
                                         </div>
                                     </div>
                                     
-                                    {/* Echter Link Button (Funktioniert immer) */}
+                                    {/* DOWNLOAD BUTTON */}
                                     <a 
                                         href={file.url} 
+                                        download={file.id} 
                                         target="_blank" 
                                         rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
                                         className="p-3 text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-full transition-colors"
-                                        aria-label="In neuem Tab öffnen"
+                                        aria-label="Herunterladen"
                                     >
-                                        <IconExternal size={20} />
+                                        <IconDownload size={20} />
                                     </a>
                                 </div>
                             ))
