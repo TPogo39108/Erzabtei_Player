@@ -3,9 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Erzabtei Player (Robust)</title>
+    <!-- PWA Meta Tags für natives App-Feeling -->
+    <meta name="theme-color" content="#020617">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiRXJ6YWJ0ZWkgUGxheWVyIiwic2hvcnRfbmFtZSI6IkVyemFidGVpIiwic3RhcnRfdXJsIjoiLi8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMDIwNjE3IiwidGhlbWVfY29sb3IiOiIjMDIwNjE3IiwiaWNvbnMiOltdfQ==">
     
-    <!-- Design & Frameworks laden -->
+    <title>Erzabtei Player</title>
+    
+    <!-- Frameworks -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -14,7 +20,7 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        body { padding-bottom: 120px; }
+        body { padding-bottom: 120px; } /* Platz für Player */
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans antialiased">
@@ -23,45 +29,28 @@
 
     <script type="text/babel">
         // --- ICONS ---
-        const IconPlay = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>);
-        const IconPause = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>);
+        const IconPlay = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>);
+        const IconPause = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>);
         const IconMusic = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>);
         const IconRefresh = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>);
 
-        // --- PROXY LOGIK (ROBUST) ---
-        const TARGET_URL = 'https://mp3.erzabtei.de/';
+        // --- DATA SOURCE ---
+        // Lädt die Datei, die GitHub Actions erstellt hat.
+        // Wir entfernen das './' um kompatibler mit Blob-URLs zu sein, falls nötig.
+        const DIRECTORY_FILE = 'directory.html';
+        const AUDIO_BASE_URL = 'https://mp3.erzabtei.de/';
 
-        const PROXY_STRATEGIES = [
-            {
-                name: 'AllOrigins (JSON)',
-                url: (target) => `https://api.allorigins.win/get?url=${encodeURIComponent(target)}&disableCache=true`,
-                extract: async (res) => {
-                    const json = await res.json();
-                    return json.contents; // JSON Wrapper entpacken
-                }
-            },
-            {
-                name: 'CorsProxy.io',
-                url: (target) => `https://corsproxy.io/?${encodeURIComponent(target)}`,
-                extract: async (res) => await res.text()
-            },
-            {
-                name: 'CodeTabs',
-                url: (target) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(target)}`,
-                extract: async (res) => await res.text()
-            }
-        ];
-
-        // DEMO DATEN (Nur letzter Ausweg)
+        // FALLBACK DATEN (Für Preview oder wenn GitHub Action noch nicht lief)
         const MOCK_HTML_FALLBACK = `
             <html><body><ul>
             <li><a href="2026-01-30-Fri-0630-konventamt.mp3">2026-01-30-Fri-0630-konventamt.mp3</a></li>
             <li><a href="2026-01-29-Thu-1800-vesper.mp3">2026-01-29-Thu-1800-vesper.mp3</a></li>
             <li><a href="2026-01-29-Thu-1200-mittagshore.mp3">2026-01-29-Thu-1200-mittagshore.mp3</a></li>
+            <li><a href="2026-01-29-Thu-0630-konventamt.mp3">2026-01-29-Thu-0630-konventamt.mp3</a></li>
+            <li><a href="2026-01-28-Wed-2000-komplet.mp3">2026-01-28-Wed-2000-komplet.mp3</a></li>
             </ul></body></html>
         `;
 
-        // --- HELPER ---
         const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
         const formatDateDE = (isoDate) => {
             const [year, month, day] = isoDate.split('-');
@@ -69,7 +58,6 @@
         };
 
         const parseFilename = (filename) => {
-            // Decodiere URI Componente falls nötig (z.B. %20)
             const decoded = decodeURIComponent(filename);
             const regex = /^(\d{4})-(\d{2})-(\d{2})-([A-Za-z]+)-(\d{4})-(.*)\.mp3$/;
             const match = decoded.match(regex);
@@ -89,7 +77,7 @@
 
             return {
                 id: decoded,
-                url: `${TARGET_URL}${decoded}`,
+                url: `${AUDIO_BASE_URL}${decoded}`,
                 title: title,
                 date: `${year}-${month}-${day}`,
                 formattedDate: `${dayName}, ${formatDateDE(`${year}-${month}-${day}`)}`,
@@ -99,7 +87,7 @@
         };
 
         const parseHtmlToAudioFiles = (html) => {
-            if (!html || typeof html !== 'string') return [];
+            if (!html) return [];
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             const links = Array.from(doc.querySelectorAll('a'));
@@ -107,7 +95,7 @@
             return links
                 .map(link => link.getAttribute('href'))
                 .filter(href => href && href.toLowerCase().endsWith('.mp3'))
-                .map(href => parseFilename(href)) // decodeURIComponent passiert im parseFilename
+                .map(href => parseFilename(href))
                 .filter(Boolean)
                 .sort((a, b) => {
                     const dateA = new Date(`${a.date}T${a.time}`);
@@ -128,7 +116,6 @@
                     audioRef.current.src = file.url;
                     audioRef.current.playbackRate = playbackRate;
                     audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
-                    
                     if ('mediaSession' in navigator) {
                         navigator.mediaSession.metadata = new MediaMetadata({ title: file.title, artist: 'Erzabtei St. Ottilien', album: file.formattedDate });
                     }
@@ -169,7 +156,7 @@
                         <div className="flex items-center gap-3">
                             <button onClick={onToggleRate} className="text-xs font-bold text-slate-400 bg-slate-800 border border-slate-700 px-2 py-1 rounded w-12 text-center h-8 hover:bg-slate-700 transition-colors">{playbackRate}x</button>
                             <button onClick={togglePlay} className="h-12 w-12 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg hover:bg-indigo-500 active:scale-95 transition-all">
-                                {isPlaying ? <IconPause /> : <IconPlay className="ml-1" />}
+                                {isPlaying ? <IconPause /> : <IconPlay size={20} />}
                             </button>
                         </div>
                     </div>
@@ -178,65 +165,56 @@
         };
 
         const FilterChip = ({ label, active, onClick }) => (
-            <button onClick={onClick} className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap border ${active ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-900/20' : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>{label}</button>
+            <button onClick={onClick} className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap border ${active ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>{label}</button>
         );
 
-        // --- HAUPT APP ---
+        // --- APP ---
         function App() {
             const [audioFiles, setAudioFiles] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
-            const [statusMsg, setStatusMsg] = React.useState("Starte Verbindung...");
+            const [error, setError] = React.useState(null);
             const [activeFilter, setActiveFilter] = React.useState('All');
             const [activeFile, setActiveFile] = React.useState(null);
             const [playbackRate, setPlaybackRate] = React.useState(1.0);
+            // NEU: Status für Mock Daten
             const [isMockData, setIsMockData] = React.useState(false);
 
             const fetchDirectory = async () => {
                 setLoading(true);
+                setError(null);
                 setIsMockData(false);
-                setAudioFiles([]);
                 
-                let success = false;
-
-                // STRATEGIE LOOP
-                for (const strategy of PROXY_STRATEGIES) {
-                    try {
-                        setStatusMsg(`Verbinde über ${strategy.name}...`);
-                        console.log(`Versuche: ${strategy.name}`);
-                        
-                        const proxyUrl = strategy.url(TARGET_URL);
-                        const res = await fetch(proxyUrl);
-                        
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                        
-                        const html = await strategy.extract(res);
-                        
-                        if (!html || html.length < 50) throw new Error("Leere oder zu kurze Antwort");
-
-                        const parsed = parseHtmlToAudioFiles(html);
-                        
-                        if (parsed.length > 0) {
-                            console.log(`Erfolg mit ${strategy.name}: ${parsed.length} Dateien.`);
-                            setAudioFiles(parsed);
-                            success = true;
-                            break; 
-                        } else {
-                            throw new Error("Keine MP3s im HTML gefunden");
-                        }
-
-                    } catch (e) {
-                        console.warn(`${strategy.name} fehlgeschlagen:`, e.message);
+                try {
+                    // Wir versuchen die Datei zu laden.
+                    // Das .catch() fängt den "Failed to parse URL" Fehler in der Preview ab.
+                    const res = await fetch(DIRECTORY_FILE).catch(e => {
+                        console.warn("Fetch von directory.html fehlgeschlagen (Lokal/Preview):", e);
+                        return null; 
+                    });
+                    
+                    if (!res || !res.ok) {
+                        // Wenn Datei fehlt (404) oder Fetch scheitert (null), werfen wir einen Fehler,
+                        // der unten im catch-Block abgefangen wird, um Demo-Daten zu laden.
+                        throw new Error("Lokaldatei nicht verfügbar");
                     }
-                }
+                    
+                    const html = await res.text();
+                    const parsed = parseHtmlToAudioFiles(html);
+                    
+                    if(parsed.length === 0) throw new Error("Liste ist leer");
+                    setAudioFiles(parsed);
 
-                if (!success) {
-                    setStatusMsg("Alle Verbindungen gescheitert.");
+                } catch (err) {
+                    console.warn("Nutze Demo-Daten:", err);
+                    // FALLBACK: Demo Daten laden
                     const parsedMock = parseHtmlToAudioFiles(MOCK_HTML_FALLBACK);
                     setAudioFiles(parsedMock);
                     setIsMockData(true);
+                    // Optional: Fehler im State speichern, wenn man eine Nachricht anzeigen will
+                    // setError(err.message); 
+                } finally {
+                    setLoading(false);
                 }
-                
-                setLoading(false);
             };
 
             React.useEffect(() => { fetchDirectory(); }, []);
@@ -266,28 +244,33 @@
                     </header>
 
                     <main className="px-4 py-6 space-y-3">
-                        {/* Status Meldungen */}
                         {loading && (
-                             <div className="text-xs text-indigo-400 text-center mb-4 font-mono animate-pulse">
-                                📡 {statusMsg}
+                             <div className="space-y-4 animate-pulse">
+                                {[1,2,3].map(i => <div key={i} className="h-20 bg-slate-900 border border-slate-800 rounded-xl"></div>)}
                              </div>
                         )}
 
+                        {/* Hinweis bei Demo-Daten */}
                         {isMockData && (
-                            <div className="p-3 bg-amber-950/30 border border-amber-900/50 text-amber-200 rounded-lg text-xs flex items-center gap-2 mb-4">
-                                <span>⚠️ Verbindung fehlgeschlagen. Zeige <strong>Demo-Daten</strong>.</span>
+                            <div className="p-4 bg-slate-900 border border-amber-900/50 text-amber-200 rounded-lg text-sm mb-4">
+                                <p className="font-bold flex items-center gap-2">⚠️ Demo-Modus aktiv</p>
+                                <p className="text-xs opacity-70 mt-1">
+                                    Die Datei <code>directory.html</code> wurde nicht gefunden. Das ist normal in der Vorschau oder wenn der GitHub-Bot noch nicht gelaufen ist.
+                                </p>
                             </div>
                         )}
 
-                        {loading ? (
-                            <div className="space-y-4 animate-pulse">
-                                {[1,2,3].map(i => <div key={i} className="h-20 bg-slate-900 border border-slate-800 rounded-xl"></div>)}
+                        {error && !isMockData && (
+                            <div className="p-4 bg-slate-900 border border-indigo-900 text-indigo-200 rounded-lg text-sm text-center">
+                                <p className="font-bold mb-1">Status: {error}</p>
                             </div>
-                        ) : (
+                        )}
+
+                        {!loading && filteredFiles.length > 0 && (
                             filteredFiles.map(file => (
-                                <div key={file.id} onClick={() => setActiveFile(file)} className={`rounded-xl p-4 shadow-sm border cursor-pointer transition-all flex items-center gap-4 ${activeFile?.id === file.id ? 'border-indigo-500 bg-indigo-900/20 ring-1 ring-indigo-500/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-800/50'}`}>
-                                    <div className={`h-12 w-12 min-w-[3rem] rounded-full flex items-center justify-center transition-colors ${activeFile?.id === file.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 text-indigo-400'}`}>
-                                        {activeFile?.id === file.id ? <IconMusic size={20} /> : <IconPlay size={20} className="ml-1" />}
+                                <div key={file.id} onClick={() => setActiveFile(file)} className={`rounded-xl p-4 shadow-sm border cursor-pointer transition-all flex items-center gap-4 ${activeFile?.id === file.id ? 'border-indigo-500 bg-indigo-900/20 ring-1 ring-indigo-500/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700'}`}>
+                                    <div className={`h-12 w-12 min-w-[3rem] rounded-full flex items-center justify-center transition-colors ${activeFile?.id === file.id ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-indigo-400'}`}>
+                                        {activeFile?.id === file.id ? <IconMusic size={20} /> : <IconPlay size={20} />}
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <h3 className={`font-semibold truncate ${activeFile?.id === file.id ? 'text-indigo-300' : 'text-slate-200'}`}>{file.title}</h3>
@@ -299,10 +282,6 @@
                                     </div>
                                 </div>
                             ))
-                        )}
-                        
-                        {!loading && filteredFiles.length === 0 && (
-                            <div className="text-center py-10 text-slate-500">Keine Aufnahmen gefunden.</div>
                         )}
                     </main>
 
