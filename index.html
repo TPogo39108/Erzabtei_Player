@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- WICHTIG: Verhindert, dass der Server die Anfrage blockiert (Referrer-Schutz umgehen) -->
+    <meta name="referrer" content="no-referrer">
+
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#020617">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -19,7 +23,7 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        body { padding-bottom: 120px; }
+        body { padding-bottom: 140px; } /* Mehr Platz für Player + Fehlermeldungen */
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans antialiased">
@@ -32,6 +36,7 @@
         const IconPause = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>);
         const IconMusic = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>);
         const IconRefresh = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>);
+        const IconDownload = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>);
 
         // --- DATA SOURCE ---
         const DIRECTORY_FILENAME = 'directory.html';
@@ -54,7 +59,7 @@
         const parseFilename = (filename) => {
             const decoded = decodeURIComponent(filename);
             
-            // 1. Versuch: Strenger Parser (für perfekt formatierte Dateien)
+            // 1. Versuch: Strenger Parser
             const regex = /^(\d{4})-(\d{2})-(\d{2})-([A-Za-z]+)-(\d{4})-(.*)\.mp3$/;
             const match = decoded.match(regex);
             
@@ -86,13 +91,12 @@
             }
 
             // 2. Versuch: "Allesfresser" Fallback
-            // Wenn der Name nicht passt, zeigen wir ihn trotzdem an, damit nichts verloren geht.
             if (decoded.toLowerCase().endsWith('.mp3')) {
                 return {
                     id: decoded,
                     url: `${AUDIO_BASE_URL}${decoded}`,
                     title: decoded.replace('.mp3', ''),
-                    date: '2099-01-01', // Sortiert nach oben oder unten
+                    date: '2099-01-01',
                     formattedDate: 'Datum unbekannt',
                     time: '--:--',
                     type: 'Sonstiges'
@@ -114,7 +118,6 @@
                 .map(href => parseFilename(href))
                 .filter(Boolean)
                 .sort((a, b) => {
-                    // Fallback-Sortierung
                     if(a.date === '2099-01-01') return 1;
                     if(b.date === '2099-01-01') return -1;
                     const dateA = new Date(`${a.date}T${a.time}`);
@@ -129,12 +132,23 @@
             const [isPlaying, setIsPlaying] = React.useState(false);
             const [currentTime, setCurrentTime] = React.useState(0);
             const [duration, setDuration] = React.useState(0);
+            const [loadError, setLoadError] = React.useState(null);
 
             React.useEffect(() => {
+                setLoadError(null);
                 if (audioRef.current) {
                     audioRef.current.src = file.url;
                     audioRef.current.playbackRate = playbackRate;
-                    audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+                    audioRef.current.play()
+                        .then(() => setIsPlaying(true))
+                        .catch(err => {
+                            console.error("Playback error:", err);
+                            // Autoplay Fehler ignorieren wir meistens, aber echte Netzwerkfehler wollen wir sehen
+                            if (err.name !== 'NotAllowedError') {
+                                setLoadError("Abspielen fehlgeschlagen. Netzwerkfehler?");
+                            }
+                        });
+                    
                     if ('mediaSession' in navigator) {
                         navigator.mediaSession.metadata = new MediaMetadata({ title: file.title, artist: 'Erzabtei St. Ottilien', album: file.formattedDate });
                     }
@@ -159,7 +173,23 @@
 
             return (
                 <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 shadow-[0_-4px_20px_rgba(0,0,0,0.5)] pb-6 pt-2 z-50">
-                    <audio ref={audioRef} onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)} onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)} onEnded={() => setIsPlaying(false)} />
+                    <audio 
+                        ref={audioRef} 
+                        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)} 
+                        onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)} 
+                        onEnded={() => setIsPlaying(false)} 
+                        onError={(e) => {
+                            console.error("Audio Error:", e);
+                            setLoadError("Fehler beim Laden. Möglicherweise blockiert.");
+                        }}
+                    />
+                    
+                    {loadError && (
+                        <div className="absolute -top-12 left-0 right-0 bg-red-900/90 text-white text-xs px-4 py-2 text-center">
+                            {loadError} <a href={file.url} target="_blank" className="underline font-bold ml-2">Direkt öffnen</a>
+                        </div>
+                    )}
+
                     <div className="relative w-full h-1.5 bg-slate-800 cursor-pointer group mb-3">
                         <div className="absolute top-0 left-0 h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}></div>
                         <input type="range" min="0" max={duration || 0} value={currentTime} onChange={(e) => { audioRef.current.currentTime = parseFloat(e.target.value); setCurrentTime(parseFloat(e.target.value)); }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
@@ -206,7 +236,6 @@
                 
                 try {
                     const timestamp = new Date().getTime();
-                    // Expliziter Pfad "./" und timestamp zum Cache-Busting
                     const fetchUrl = `./${DIRECTORY_FILENAME}?t=${timestamp}`;
 
                     const res = await fetch(fetchUrl, { cache: "no-store" }).catch(e => {
@@ -219,14 +248,11 @@
                     }
                     
                     const html = await res.text();
-                    
-                    // Debug Info: Größe der geladenen Datei
                     setDebugInfo(`HTML geladen: ${html.length} Bytes.`);
 
                     if(!html || html.length < 10) throw new Error("Datei ist leer");
 
                     const parsed = parseHtmlToAudioFiles(html);
-                    
                     if(parsed.length === 0) throw new Error("Keine MP3s im HTML erkannt");
                     
                     setAudioFiles(parsed);
@@ -240,6 +266,12 @@
                 } finally {
                     setLoading(false);
                 }
+            };
+
+            const handleDownload = (file, e) => {
+                e.stopPropagation();
+                // Wir öffnen die Datei in einem neuen Tab. Das ist die sicherste Methode bei CORS.
+                window.open(file.url, '_blank');
             };
 
             React.useEffect(() => { fetchDirectory(); }, []);
@@ -289,18 +321,29 @@
 
                         {!loading && filteredFiles.length > 0 && (
                             filteredFiles.map(file => (
-                                <div key={file.id} onClick={() => setActiveFile(file)} className={`rounded-xl p-4 shadow-sm border cursor-pointer transition-all flex items-center gap-4 ${activeFile?.id === file.id ? 'border-indigo-500 bg-indigo-900/20 ring-1 ring-indigo-500/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700'}`}>
-                                    <div className={`h-12 w-12 min-w-[3rem] rounded-full flex items-center justify-center transition-colors ${activeFile?.id === file.id ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-indigo-400'}`}>
-                                        {activeFile?.id === file.id ? <IconMusic size={20} /> : <IconPlay size={20} />}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <h3 className={`font-semibold truncate ${activeFile?.id === file.id ? 'text-indigo-300' : 'text-slate-200'}`}>{file.title}</h3>
-                                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                                            <span className="font-medium text-slate-400">{file.formattedDate}</span>
-                                            <span className="text-slate-600">•</span>
-                                            <span>{file.time} Uhr</span>
+                                <div key={file.id} onClick={() => setActiveFile(file)} className={`rounded-xl p-4 shadow-sm border cursor-pointer transition-all flex items-center justify-between gap-4 ${activeFile?.id === file.id ? 'border-indigo-500 bg-indigo-900/20 ring-1 ring-indigo-500/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700'}`}>
+                                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                                        <div className={`h-12 w-12 min-w-[3rem] rounded-full flex items-center justify-center transition-colors ${activeFile?.id === file.id ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-indigo-400'}`}>
+                                            {activeFile?.id === file.id ? <IconMusic size={20} /> : <IconPlay size={20} />}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className={`font-semibold truncate ${activeFile?.id === file.id ? 'text-indigo-300' : 'text-slate-200'}`}>{file.title}</h3>
+                                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                                                <span className="font-medium text-slate-400">{file.formattedDate}</span>
+                                                <span className="text-slate-600">•</span>
+                                                <span>{file.time} Uhr</span>
+                                            </div>
                                         </div>
                                     </div>
+                                    
+                                    {/* Download Button */}
+                                    <button 
+                                        onClick={(e) => handleDownload(file, e)}
+                                        className="p-3 text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-full transition-colors"
+                                        aria-label="Herunterladen / Öffnen"
+                                    >
+                                        <IconDownload size={20} />
+                                    </button>
                                 </div>
                             ))
                         )}
