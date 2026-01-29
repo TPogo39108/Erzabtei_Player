@@ -2,9 +2,8 @@ name: Update Audio List
 
 on:
   schedule:
-    # Läuft automatisch zu jeder vollen Stunde (z.B. 14:00, 15:00)
-    - cron: '0 * * * *'
-  # Erlaubt dir, den Bot manuell per Klick zu starten (unter dem Reiter "Actions")
+    # Alle 2 Stunden (zur vollen Stunde)
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -17,34 +16,24 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v3
 
-      - name: Verzeichnis von Erzabtei laden
+      - name: Verzeichnis laden
         run: |
-          # Lädt die Webseite herunter und speichert sie als 'directory.html'
-          # -s: Still (weniger Text im Log)
-          # -L: Follow Redirects (WICHTIG, falls die Seite umgeleitet wird)
-          curl -sL "https://mp3.erzabtei.de/" > directory.html
+          # Wir tarnen uns als Browser (-A), damit der Server uns nicht blockt
+          curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://mp3.erzabtei.de/" > directory.html
           
-          # Sicherheitscheck: Ist die Datei größer als 0 Bytes?
+          # Prüfen ob Datei existiert und nicht leer ist
           if [ ! -s directory.html ]; then
-            echo "FEHLER: Die heruntergeladene Datei ist leer!"
-            exit 1
+             echo "FEHLER: Download fehlgeschlagen (Datei leer)."
+             exit 1
           fi
           
-          echo "Download abgeschlossen. Größe der Datei:"
+          echo "Download erfolgreich. Größe:"
           ls -lh directory.html
 
-      - name: Änderungen speichern (Commit & Push)
+      - name: Speichern (Commit & Push)
         run: |
-          # Konfiguriert den Bot-Benutzer für Git
           git config user.name "Erzabtei Bot"
           git config user.email "bot@github.com"
-          
-          # Fügt die neue Datei hinzu
           git add directory.html
-          
-          # Speichert nur, wenn sich wirklich etwas geändert hat
-          # "|| echo..." verhindert einen Fehlerabbruch, wenn keine Änderungen da sind
-          git commit -m "Update directory listing [Auto]" || echo "Keine neuen Aufnahmen gefunden."
-          
-          # Lädt die Änderungen zurück ins Repository
+          git commit -m "Update directory listing [Auto]" || echo "Keine neuen Daten"
           git push
