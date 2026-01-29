@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <!-- WICHTIG: Verhindert, dass der Server die Anfrage blockiert (Referrer-Schutz umgehen) -->
+    <!-- WICHTIG: Referrer unterdrücken, damit der Server uns nicht als "Fremd" blockiert -->
     <meta name="referrer" content="no-referrer">
 
     <!-- PWA Meta Tags -->
@@ -23,7 +23,7 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        body { padding-bottom: 140px; } /* Mehr Platz für Player + Fehlermeldungen */
+        body { padding-bottom: 160px; } /* Genug Platz für Player & Meldungen */
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans antialiased">
@@ -36,13 +36,14 @@
         const IconPause = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>);
         const IconMusic = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>);
         const IconRefresh = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>);
-        const IconDownload = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>);
+        // External Link Icon (Pfeil nach oben rechts)
+        const IconExternal = ({size=24}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>);
 
-        // --- DATA SOURCE ---
+        // --- KONFIGURATION ---
         const DIRECTORY_FILENAME = 'directory.html';
         const AUDIO_BASE_URL = 'https://mp3.erzabtei.de/';
 
-        // FALLBACK (Erweitert für Vorschau)
+        // FALLBACK DATEN (Nur Vorschau)
         const MOCK_HTML_FALLBACK = `
             <html><body><ul>
             <li><a href="2026-01-30-Fri-0630-konventamt.mp3">2026-01-30-Fri-0630-konventamt.mp3</a></li>
@@ -50,6 +51,7 @@
             </ul></body></html>
         `;
 
+        // --- HELPER ---
         const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
         const formatDateDE = (isoDate) => {
             const [year, month, day] = isoDate.split('-');
@@ -57,11 +59,25 @@
         };
 
         const parseFilename = (filename) => {
+            if (!filename) return null;
             const decoded = decodeURIComponent(filename);
             
+            // URL CLEANUP: Falls der Link schon absolut ist, nicht nochmal die Base URL davorhängen
+            let fullUrl = '';
+            if (decoded.startsWith('http')) {
+                fullUrl = decoded;
+            } else {
+                // Sicherstellen, dass kein doppelter Slash entsteht, aber einer da ist
+                const cleanBase = AUDIO_BASE_URL.endsWith('/') ? AUDIO_BASE_URL : AUDIO_BASE_URL + '/';
+                const cleanFile = decoded.startsWith('/') ? decoded.slice(1) : decoded;
+                fullUrl = cleanBase + cleanFile;
+            }
+
             // 1. Versuch: Strenger Parser
             const regex = /^(\d{4})-(\d{2})-(\d{2})-([A-Za-z]+)-(\d{4})-(.*)\.mp3$/;
-            const match = decoded.match(regex);
+            // Wir schauen nur auf den Dateinamen-Teil (nach dem letzten /)
+            const filePart = decoded.split('/').pop(); 
+            const match = filePart.match(regex);
             
             if (match) {
                 const [_, year, month, day, dayName, timeRaw, titleSlug] = match;
@@ -81,7 +97,7 @@
 
                 return {
                     id: decoded,
-                    url: `${AUDIO_BASE_URL}${decoded}`,
+                    url: fullUrl,
                     title: title,
                     date: `${year}-${month}-${day}`,
                     formattedDate: `${dayName}, ${formatDateDE(`${year}-${month}-${day}`)}`,
@@ -90,12 +106,12 @@
                 };
             }
 
-            // 2. Versuch: "Allesfresser" Fallback
+            // 2. Versuch: Fallback für alles andere
             if (decoded.toLowerCase().endsWith('.mp3')) {
                 return {
                     id: decoded,
-                    url: `${AUDIO_BASE_URL}${decoded}`,
-                    title: decoded.replace('.mp3', ''),
+                    url: fullUrl,
+                    title: filePart.replace('.mp3', ''),
                     date: '2099-01-01',
                     formattedDate: 'Datum unbekannt',
                     time: '--:--',
@@ -139,13 +155,16 @@
                 if (audioRef.current) {
                     audioRef.current.src = file.url;
                     audioRef.current.playbackRate = playbackRate;
+                    // "Metadata" lädt nur die Infos, nicht die ganze Datei sofort -> Spart Daten/Fehler
+                    audioRef.current.preload = "metadata"; 
+                    
                     audioRef.current.play()
                         .then(() => setIsPlaying(true))
                         .catch(err => {
-                            console.error("Playback error:", err);
-                            // Autoplay Fehler ignorieren wir meistens, aber echte Netzwerkfehler wollen wir sehen
+                            console.error("Playback start error:", err);
+                            // Autoplay Blockaden sind normal, andere Fehler zeigen wir an
                             if (err.name !== 'NotAllowedError') {
-                                setLoadError("Abspielen fehlgeschlagen. Netzwerkfehler?");
+                                setLoadError("Starten fehlgeschlagen.");
                             }
                         });
                     
@@ -179,14 +198,22 @@
                         onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)} 
                         onEnded={() => setIsPlaying(false)} 
                         onError={(e) => {
-                            console.error("Audio Error:", e);
-                            setLoadError("Fehler beim Laden. Möglicherweise blockiert.");
+                            const err = e.target.error;
+                            let msg = "Fehler beim Laden.";
+                            if (err && err.code === 4) msg = "Quelle nicht unterstützt oder nicht gefunden (404).";
+                            if (err && err.code === 2) msg = "Netzwerkfehler.";
+                            console.error("Audio Error Object:", err);
+                            setLoadError(msg);
                         }}
                     />
                     
+                    {/* Fehlermeldung mit Direkt-Link */}
                     {loadError && (
-                        <div className="absolute -top-12 left-0 right-0 bg-red-900/90 text-white text-xs px-4 py-2 text-center">
-                            {loadError} <a href={file.url} target="_blank" className="underline font-bold ml-2">Direkt öffnen</a>
+                        <div className="absolute -top-16 left-2 right-2 bg-red-900/95 text-red-100 text-xs p-3 rounded-lg text-center border border-red-700 shadow-xl backdrop-blur-sm">
+                            ⚠️ {loadError} <br/>
+                            <a href={file.url} target="_blank" rel="noopener noreferrer" className="underline font-bold mt-1 inline-block text-white">
+                                Hier klicken zum direkten Öffnen
+                            </a>
                         </div>
                     )}
 
@@ -222,7 +249,6 @@
             const [audioFiles, setAudioFiles] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
             const [errorDetails, setErrorDetails] = React.useState(null);
-            const [debugInfo, setDebugInfo] = React.useState("");
             const [activeFilter, setActiveFilter] = React.useState('Alle');
             const [activeFile, setActiveFile] = React.useState(null);
             const [playbackRate, setPlaybackRate] = React.useState(1.0);
@@ -231,11 +257,11 @@
             const fetchDirectory = async () => {
                 setLoading(true);
                 setErrorDetails(null);
-                setDebugInfo("");
                 setIsMockData(false);
                 
                 try {
                     const timestamp = new Date().getTime();
+                    // Expliziter Pfad "./" und timestamp zum Cache-Busting
                     const fetchUrl = `./${DIRECTORY_FILENAME}?t=${timestamp}`;
 
                     const res = await fetch(fetchUrl, { cache: "no-store" }).catch(e => {
@@ -248,11 +274,11 @@
                     }
                     
                     const html = await res.text();
-                    setDebugInfo(`HTML geladen: ${html.length} Bytes.`);
-
+                    
                     if(!html || html.length < 10) throw new Error("Datei ist leer");
 
                     const parsed = parseHtmlToAudioFiles(html);
+                    
                     if(parsed.length === 0) throw new Error("Keine MP3s im HTML erkannt");
                     
                     setAudioFiles(parsed);
@@ -266,12 +292,6 @@
                 } finally {
                     setLoading(false);
                 }
-            };
-
-            const handleDownload = (file, e) => {
-                e.stopPropagation();
-                // Wir öffnen die Datei in einem neuen Tab. Das ist die sicherste Methode bei CORS.
-                window.open(file.url, '_blank');
             };
 
             React.useEffect(() => { fetchDirectory(); }, []);
@@ -313,8 +333,7 @@
                             <div className="p-4 bg-slate-900 border border-amber-900/50 text-amber-200 rounded-lg text-sm mb-4 break-words">
                                 <p className="font-bold flex items-center gap-2">⚠️ Demo-Modus aktiv</p>
                                 <p className="text-xs opacity-70 mt-2">
-                                    Grund: <strong>{errorDetails}</strong><br/>
-                                    Debug Info: {debugInfo || "Keine Daten"}
+                                    Fehler: <strong>{errorDetails}</strong>
                                 </p>
                             </div>
                         )}
@@ -336,14 +355,17 @@
                                         </div>
                                     </div>
                                     
-                                    {/* Download Button */}
-                                    <button 
-                                        onClick={(e) => handleDownload(file, e)}
+                                    {/* Echter Link Button (Funktioniert immer) */}
+                                    <a 
+                                        href={file.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
                                         className="p-3 text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-full transition-colors"
-                                        aria-label="Herunterladen / Öffnen"
+                                        aria-label="In neuem Tab öffnen"
                                     >
-                                        <IconDownload size={20} />
-                                    </button>
+                                        <IconExternal size={20} />
+                                    </a>
                                 </div>
                             ))
                         )}
