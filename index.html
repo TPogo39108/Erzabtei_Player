@@ -32,10 +32,15 @@
 
         // --- KONFIGURATION ---
         const BASE_URL = 'https://mp3.erzabtei.de';
-        // Proxy um CORS zu umgehen (allorigins ist zuverlässig für Text)
-        const PROXY_URL = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(BASE_URL + '/');
+        
+        // Multi-Proxy-Liste: Wir versuchen diese nacheinander, falls einer ausfällt
+        const PROXY_GENERATORS = [
+            (url) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+            (url) => 'https://corsproxy.io/?' + encodeURIComponent(url),
+            (url) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url)
+        ];
 
-        // FALLBACK DATEN (Falls der Proxy blockiert wird, damit man etwas sieht)
+        // FALLBACK DATEN (Nur wenn ALLE Proxies versagen)
         const MOCK_HTML_FALLBACK = `
             <html><body><ul>
             <li><a href="2026-01-29-Thu-1800-vesper.mp3">2026-01-29-Thu-1800-vesper.mp3</a></li>
@@ -190,27 +195,38 @@
                 setError(null);
                 setIsMockData(false);
                 
-                try {
-                    // Abruf über Proxy
-                    const res = await fetch(PROXY_URL);
-                    if (!res.ok) throw new Error("Proxy-Fehler");
-                    
-                    const html = await res.text();
-                    const parsed = parseHtmlToAudioFiles(html);
-                    
-                    if(parsed.length === 0) throw new Error("Keine MP3s gefunden");
-                    
-                    setAudioFiles(parsed);
+                let success = false;
 
-                } catch (err) {
-                    console.warn("Live-Daten fehlgeschlagen, lade Demo.", err);
-                    // Fallback auf Demo-Daten
+                // Versuche nacheinander verschiedene Proxies
+                for (const generator of PROXY_GENERATORS) {
+                    try {
+                        const proxyUrl = generator(BASE_URL + '/');
+                        console.log("Versuche Verbindung über:", proxyUrl);
+                        
+                        const res = await fetch(proxyUrl);
+                        if (!res.ok) throw new Error("Status " + res.status);
+                        
+                        const html = await res.text();
+                        const parsed = parseHtmlToAudioFiles(html);
+                        
+                        if(parsed.length > 0) {
+                            setAudioFiles(parsed);
+                            success = true;
+                            break; // Erfolg! Schleife beenden
+                        }
+                    } catch (e) {
+                        console.warn("Proxy fehlgeschlagen, versuche nächsten...", e);
+                    }
+                }
+
+                if (!success) {
+                    console.warn("Alle Verbindungen fehlgeschlagen. Lade Demo-Daten.");
                     const parsedMock = parseHtmlToAudioFiles(MOCK_HTML_FALLBACK);
                     setAudioFiles(parsedMock);
                     setIsMockData(true);
-                } finally {
-                    setLoading(false);
                 }
+                
+                setLoading(false);
             };
 
             React.useEffect(() => { fetchDirectory(); }, []);
@@ -245,7 +261,7 @@
                     <main className="px-4 py-6 space-y-3">
                         {isMockData && (
                             <div className="p-3 bg-amber-950/30 border border-amber-900/50 text-amber-200 rounded-lg text-xs flex items-center gap-2 mb-4">
-                                <span>⚠️ Verbindung zur Abtei fehlgeschlagen. Zeige <strong>Demo-Daten</strong>.</span>
+                                <span>⚠️ Verbindung zur Abtei fehlgeschlagen (Alle Proxies blockiert). Zeige <strong>Demo-Daten</strong>.</span>
                             </div>
                         )}
 
